@@ -1,4 +1,5 @@
 const ANILIST_API = "https://graphql.anilist.co";
+
 const MEDIA_CARD_FIELDS = `
   id
   idMal
@@ -13,14 +14,13 @@ const MEDIA_CARD_FIELDS = `
   bannerImage
   averageScore
   popularity
-  nextAiringEpisode { episode airingAt }
+  nextAiringEpisode { episode airingAt timeUntilAiring }
   synonyms
 `;
 
 function getSeasonInfo(date = new Date()) {
   const month = date.getUTCMonth() + 1;
   const year = date.getUTCFullYear();
-
   if (month <= 3) return { season: "WINTER", year, nextSeason: "SPRING", nextYear: year };
   if (month <= 6) return { season: "SPRING", year, nextSeason: "SUMMER", nextYear: year };
   if (month <= 9) return { season: "SUMMER", year, nextSeason: "FALL", nextYear: year };
@@ -51,6 +51,20 @@ async function queryAniList(query, variables = {}) {
 
 function mapMedia(media) {
   if (!media) return null;
+
+  // Calculate aired episode count
+  let airedEpisodes = null;
+  if (media.status === 'RELEASING' && media.nextAiringEpisode?.episode) {
+    // Next airing episode - 1 = total aired episodes
+    airedEpisodes = media.nextAiringEpisode.episode - 1;
+  } else if (media.status === 'FINISHED' && media.episodes) {
+    // For completed anime, all episodes are aired
+    airedEpisodes = media.episodes;
+  } else if (media.episodes) {
+    // Fallback to episodes field
+    airedEpisodes = media.episodes;
+  }
+
   return {
     id: String(media.id),
     idMal: media.idMal || null,
@@ -61,6 +75,7 @@ function mapMedia(media) {
     titleNative: media.title?.native || null,
     description: media.description || "",
     episodes: media.episodes || null,
+    airedEpisodes: airedEpisodes, // NEW FIELD
     status: media.status || null,
     format: media.format || null,
     seasonYear: media.seasonYear || null,
@@ -132,6 +147,7 @@ async function getHomeFeeds() {
     nextSeason: season.nextSeason,
     nextYear: season.nextYear,
   });
+
   return {
     trending: (data.trending?.media || []).map(mapMedia),
     popular: (data.popular?.media || []).map(mapMedia),
@@ -201,6 +217,7 @@ async function searchAnime(search) {
           bannerImage
           averageScore
           popularity
+          nextAiringEpisode { episode airingAt timeUntilAiring }
         }
       }
     }
@@ -227,7 +244,7 @@ async function getAnimeById(animeId) {
         bannerImage
         averageScore
         popularity
-        nextAiringEpisode { episode airingAt }
+        nextAiringEpisode { episode airingAt timeUntilAiring }
         synonyms
       }
     }
