@@ -1,0 +1,10 @@
+{
+  "comment": "Manual mapping of AniList IDs to AniZone IDs",
+  "mappings": {
+    "21": "uyyyn4kf",
+    "20": "unknown",
+    "1535": "unknown",
+    "21355": "kauvrjd8"
+  },
+  "instructions": "To add a new mapping: 1) Find anime on anizone.to, 2) Copy the ID from URL (e.g., 'uyyyn4kf' from /anime/uyyyn4kf), 3) Add AniList ID -> AniZone ID mapping here"
+}

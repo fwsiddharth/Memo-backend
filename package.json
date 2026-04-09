@@ -1,0 +1,22 @@
+{
+  "name": "memo-backend",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node src/index.js",
+    "build": "node -e \"console.log('backend: no build step required')\"",
+    "start": "node src/index.js",
+    "migrate:supabase": "node scripts/migrate-sqlite-to-supabase.js",
+    "hosts:providers": "node scripts/print-provider-hosts.js",
+    "probe:stream": "node scripts/stream-probe.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@supabase/supabase-js": "^2.102.1",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^17.4.1",
+    "fastify": "^5.2.1",
+    "subsrt": "^1.1.1",
+    "zod": "^3.24.2"
+  }
+}
