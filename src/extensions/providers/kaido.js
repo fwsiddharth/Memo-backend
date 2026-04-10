@@ -312,49 +312,75 @@ module.exports = {
           continue;
         }
 
-        // Check if it's a rapid-cloud link
-        if (sourceData.link.includes('rapid-cloud.co') || sourceData.link.includes('rabbitstream')) {
-          // Try to extract the actual video URL from rapid-cloud
+        // Check if it's a rapid-cloud/megacloud link
+        if (sourceData.link.includes('rapid-cloud.co') || 
+            sourceData.link.includes('rabbitstream') || 
+            sourceData.link.includes('megacloud') ||
+            sourceData.link.includes('mega-cloud')) {
+          // Try to extract the actual video URL from MegaCloud/RapidCloud
           try {
             const embedUrl = sourceData.link;
-            const embedId = embedUrl.match(/\/e(?:-\d+)?\/([^?]+)/)?.[1];
+            // Extract embed ID - handle different URL formats
+            const embedIdMatch = embedUrl.match(/\/e(?:-\d+)?\/([^?]+)/);
             
-            if (embedId) {
-              // Fetch the sources API from rapid-cloud
-              const sourcesUrl = `https://rapid-cloud.co/ajax/embed-6-v2/getSources?id=${embedId}`;
-              const sourcesResponse = await fetch(sourcesUrl, {
-                headers: {
-                  'X-Requested-With': 'XMLHttpRequest',
-                  'Referer': embedUrl,
-                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                },
-              });
+            if (embedIdMatch) {
+              const embedId = embedIdMatch[1];
               
-              if (sourcesResponse.ok) {
-                const sourcesData = await sourcesResponse.json();
-                
-                if (sourcesData?.sources?.[0]?.file) {
-                  // Got the actual m3u8 URL!
-                  return {
-                    type: "hls",
-                    url: sourcesData.sources[0].file,
-                    subtitles: (sourcesData.tracks || [])
-                      .filter(track => track.kind === 'captions')
-                      .map(track => ({
-                        lang: track.label || 'English',
-                        label: track.label || 'English',
-                        url: track.file,
-                      })),
+              // Try MegaCloud API endpoints (they use different paths)
+              const apiEndpoints = [
+                `https://megacloud.tv/embed-2/ajax/e-1/getSources?id=${embedId}`,
+                `https://rapid-cloud.co/ajax/embed-6-v2/getSources?id=${embedId}`,
+                `https://rapid-cloud.co/ajax/embed-6/getSources?id=${embedId}`,
+              ];
+              
+              for (const apiUrl of apiEndpoints) {
+                try {
+                  const sourcesResponse = await fetch(apiUrl, {
                     headers: {
-                      Referer: embedUrl,
-                      Origin: new URL(embedUrl).origin,
+                      'X-Requested-With': 'XMLHttpRequest',
+                      'Referer': embedUrl,
+                      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                     },
-                  };
+                  });
+                  
+                  if (sourcesResponse.ok) {
+                    const sourcesData = await sourcesResponse.json();
+                    
+                    // Check if sources are encrypted
+                    if (sourcesData?.sources && typeof sourcesData.sources === 'string') {
+                      // Sources are encrypted - need to decrypt
+                      // For now, fall back to embed
+                      console.log('MegaCloud sources are encrypted, falling back to embed');
+                      break;
+                    }
+                    
+                    if (sourcesData?.sources?.[0]?.file) {
+                      // Got the actual m3u8 URL!
+                      return {
+                        type: "hls",
+                        url: sourcesData.sources[0].file,
+                        subtitles: (sourcesData.tracks || [])
+                          .filter(track => track.kind === 'captions')
+                          .map(track => ({
+                            lang: track.label || 'English',
+                            label: track.label || 'English',
+                            url: track.file,
+                          })),
+                        headers: {
+                          Referer: embedUrl,
+                          Origin: new URL(embedUrl).origin,
+                        },
+                      };
+                    }
+                  }
+                } catch (apiError) {
+                  // Try next endpoint
+                  continue;
                 }
               }
             }
           } catch (extractError) {
-            console.log('Failed to extract rapid-cloud video:', extractError.message);
+            console.log('Failed to extract MegaCloud video:', extractError.message);
             // Fall back to embed
           }
         }
