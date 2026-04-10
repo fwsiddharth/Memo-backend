@@ -340,12 +340,8 @@ function buildSubtitles(payload) {
   return subtitles
     .map((item) => {
       const rawUrl = item?.url;
-      console.log('[GOJOWTF] Raw subtitle URL:', rawUrl);
-      
       const url = toAbsoluteMediaUrl(rawUrl, false);
       if (!url) return null;
-      
-      console.log('[GOJOWTF] Resolved subtitle URL:', url, 'length:', url.length);
       
       const lang = normalizeSubtitleLanguage(item?.lang);
       return {

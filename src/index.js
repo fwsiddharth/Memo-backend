@@ -703,14 +703,6 @@ app.get("/api/stream", async (request, reply) => {
       subtitles: (stream.subtitles || []).map((sub) => {
         if (!sub?.url) return sub;
         const proxiedUrl = buildMediaProxyUrl(backendBase, sub.url, { referer, origin });
-        app.log.info({
-          message: "Proxying subtitle",
-          label: sub.label,
-          originalUrl: sub.url,
-          originalUrlLength: sub.url.length,
-          proxiedUrl,
-          proxiedUrlLength: proxiedUrl.length,
-        });
         return {
           ...sub,
           rawUrl: sub.url,
