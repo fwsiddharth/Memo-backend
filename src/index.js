@@ -707,7 +707,9 @@ app.get("/api/stream", async (request, reply) => {
           message: "Proxying subtitle",
           label: sub.label,
           originalUrl: sub.url,
+          originalUrlLength: sub.url.length,
           proxiedUrl,
+          proxiedUrlLength: proxiedUrl.length,
         });
         return {
           ...sub,

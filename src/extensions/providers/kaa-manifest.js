@@ -260,10 +260,16 @@ function extractStreamFromPlayerHtml(html, playerUrl) {
 
       const lang = Array.isArray(item.language) ? item.language[1] : item.language;
       const label = Array.isArray(item.name) ? item.name[1] : item.name;
-      let src = resolveUrl(Array.isArray(item.src) ? item.src[1] : item.src, playerUrl);
+      const srcRaw = Array.isArray(item.src) ? item.src[1] : item.src;
+      
+      console.log('[KAA] Raw subtitle src:', srcRaw);
+      
+      let src = resolveUrl(srcRaw, playerUrl);
       if (!src) continue;
 
       src = src.replace("https:///", "https://");
+      
+      console.log('[KAA] Resolved subtitle URL:', src, 'length:', src.length);
 
       subtitles.push({
         lang: normalizeLangCode(lang),
