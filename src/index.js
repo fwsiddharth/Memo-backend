@@ -185,6 +185,7 @@ function buildMediaProxyUrl(baseUrl, targetUrl, opts = {}) {
   params.set("url", targetUrl);
   if (opts.referer) params.set("referer", opts.referer);
   if (opts.origin) params.set("origin", opts.origin);
+  if (opts.subtitles) params.set("subtitles", encodeURIComponent(opts.subtitles));
   return `${baseUrl}/api/media?${params.toString()}`;
 }
 
@@ -341,7 +342,7 @@ function adjustVttTiming(vttContent, offsetSeconds = 0) {
   return adjusted.join('\n');
 }
 
-function rewritePlaylist(text, playlistUrl, backendBase, proxyReferer, proxyOrigin) {
+function rewritePlaylist(text, playlistUrl, backendBase, proxyReferer, proxyOrigin, subtitles = []) {
   // Use the original stream referer/origin when available so that upstream
   // CDNs (KAA / krussdomi) receive the correct credentials on every segment
   // request instead of the segment URL's own origin which is often different.
@@ -349,7 +350,11 @@ function rewritePlaylist(text, playlistUrl, backendBase, proxyReferer, proxyOrig
   const segmentOrigin = proxyOrigin || "";
 
   const lines = String(text).split(/\r?\n/);
-  return lines
+  
+  // Check if this is a master playlist (contains #EXT-X-STREAM-INF)
+  const isMasterPlaylist = lines.some(line => line.includes('#EXT-X-STREAM-INF'));
+  
+  let result = lines
     .map((line) => {
       const trimmed = line.trim();
       if (!trimmed) return line;
@@ -383,6 +388,38 @@ function rewritePlaylist(text, playlistUrl, backendBase, proxyReferer, proxyOrig
       }
     })
     .join("\n");
+  
+  // Inject subtitles into master playlist
+  if (isMasterPlaylist && subtitles && subtitles.length > 0) {
+    const subtitleTags = subtitles.map((sub, index) => {
+      const proxiedUrl = buildMediaProxyUrl(backendBase, sub.url, {
+        referer: segmentReferer,
+        origin: segmentOrigin,
+      });
+      const language = sub.lang || 'en';
+      const name = sub.label || language;
+      const isDefault = index === 0 ? 'YES' : 'NO';
+      const autoselect = index === 0 ? 'YES' : 'NO';
+      
+      return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="${name}",DEFAULT=${isDefault},AUTOSELECT=${autoselect},FORCED=NO,LANGUAGE="${language}",URI="${proxiedUrl}"`;
+    }).join('\n');
+    
+    // Find the first #EXT-X-STREAM-INF line and inject subtitles before it
+    const streamInfIndex = result.indexOf('#EXT-X-STREAM-INF');
+    if (streamInfIndex !== -1) {
+      result = result.slice(0, streamInfIndex) + subtitleTags + '\n' + result.slice(streamInfIndex);
+      
+      // Add SUBTITLES="subs" to all stream variants
+      result = result.replace(/#EXT-X-STREAM-INF:([^\n]+)/g, (match, attrs) => {
+        if (!attrs.includes('SUBTITLES=')) {
+          return `#EXT-X-STREAM-INF:${attrs},SUBTITLES="subs"`;
+        }
+        return match;
+      });
+    }
+  }
+  
+  return result;
 }
 
 app.register(cors, {
@@ -699,7 +736,18 @@ app.get("/api/stream", async (request, reply) => {
     const proxiedStream = {
       ...stream,
       rawUrl: stream.url,
-      url: buildMediaProxyUrl(backendBase, stream.url, { referer, origin }),
+      url: buildMediaProxyUrl(backendBase, stream.url, { 
+        referer, 
+        origin,
+        // Include subtitles in the URL for HLS manifest injection
+        ...(stream.subtitles && stream.subtitles.length > 0 && {
+          subtitles: JSON.stringify(stream.subtitles.map(sub => ({
+            url: sub.url,
+            lang: sub.lang,
+            label: sub.label
+          })))
+        })
+      }),
       subtitles: (stream.subtitles || []).map((sub) => {
         if (!sub?.url) return sub;
         const proxiedUrl = buildMediaProxyUrl(backendBase, sub.url, { referer, origin });
@@ -725,6 +773,7 @@ app.get("/api/media", async (request, reply) => {
   const target = normalizeUrl(request.query?.url);
   const referer = normalizeUrl(request.query?.referer);
   const origin = normalizeUrl(request.query?.origin);
+  const subtitlesParam = request.query?.subtitles; // JSON string of subtitles
 
   if (!target) {
     return reply.code(400).send({ error: "Invalid media url." });
@@ -749,6 +798,16 @@ app.get("/api/media", async (request, reply) => {
       validateUrlHost(origin, "Origin URL");
     } catch {
       return reply.code(403).send({ error: "Origin host is not allowed." });
+    }
+  }
+  
+  // Parse subtitles if provided
+  let subtitles = [];
+  if (subtitlesParam) {
+    try {
+      subtitles = JSON.parse(decodeURIComponent(subtitlesParam));
+    } catch (error) {
+      app.log.warn({ message: "Failed to parse subtitles parameter", error: error?.message });
     }
   }
 
@@ -807,7 +866,7 @@ app.get("/api/media", async (request, reply) => {
     const text = await upstream.text();
     // Propagate the original referer/origin through to segment URLs so that
     // CDNs like krussdomi.com receive the correct headers on every request.
-    const rewritten = rewritePlaylist(text, finalUrl, backendBase, referer, origin);
+    const rewritten = rewritePlaylist(text, finalUrl, backendBase, referer, origin, subtitles);
     reply
       .code(upstream.status)
       .header("Content-Type", "application/x-mpegURL; charset=utf-8")
