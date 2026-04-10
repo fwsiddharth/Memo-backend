@@ -312,6 +312,54 @@ module.exports = {
           continue;
         }
 
+        // Check if it's a rapid-cloud link
+        if (sourceData.link.includes('rapid-cloud.co') || sourceData.link.includes('rabbitstream')) {
+          // Try to extract the actual video URL from rapid-cloud
+          try {
+            const embedUrl = sourceData.link;
+            const embedId = embedUrl.match(/\/e(?:-\d+)?\/([^?]+)/)?.[1];
+            
+            if (embedId) {
+              // Fetch the sources API from rapid-cloud
+              const sourcesUrl = `https://rapid-cloud.co/ajax/embed-6-v2/getSources?id=${embedId}`;
+              const sourcesResponse = await fetch(sourcesUrl, {
+                headers: {
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'Referer': embedUrl,
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                },
+              });
+              
+              if (sourcesResponse.ok) {
+                const sourcesData = await sourcesResponse.json();
+                
+                if (sourcesData?.sources?.[0]?.file) {
+                  // Got the actual m3u8 URL!
+                  return {
+                    type: "hls",
+                    url: sourcesData.sources[0].file,
+                    subtitles: (sourcesData.tracks || [])
+                      .filter(track => track.kind === 'captions')
+                      .map(track => ({
+                        lang: track.label || 'English',
+                        label: track.label || 'English',
+                        url: track.file,
+                      })),
+                    headers: {
+                      Referer: embedUrl,
+                      Origin: new URL(embedUrl).origin,
+                    },
+                  };
+                }
+              }
+            }
+          } catch (extractError) {
+            console.log('Failed to extract rapid-cloud video:', extractError.message);
+            // Fall back to embed
+          }
+        }
+
+        // Fallback to embed if extraction failed
         return {
           type: "embed",
           url: sourceData.link,
