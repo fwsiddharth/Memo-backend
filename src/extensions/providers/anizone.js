@@ -195,14 +195,55 @@ async function resolveShow(anime) {
     }
   }
 
-  // AniZone doesn't have a search API and uses unpredictable IDs
-  throw new Error(
-    "AniZone: This anime is not in the ID mapping. " +
-    "To add it: 1) Find the anime on anizone.to, " +
-    "2) Copy the ID from the URL (e.g., 'uyyyn4kf' from /anime/uyyyn4kf), " +
-    "3) Add the mapping to backend/src/extensions/providers/anizone-mappings.json. " +
-    "Alternatively, use one of the other sources (AnimeSalt, Gojo, kickAss, Kaido)."
-  );
+  // Try automatic search and matching
+  const names = buildQueryVariants(...getAnimeNames(anime));
+  const byId = new Map();
+  const failures = [];
+
+  for (const name of names) {
+    if (name.length < 2) continue;
+    try {
+      const results = await searchAniZone(name);
+      for (const result of results) {
+        if (!result?.id || byId.has(result.id)) continue;
+        byId.set(result.id, result);
+      }
+    } catch (error) {
+      failures.push(error?.message || String(error));
+    }
+  }
+
+  const candidates = Array.from(byId.values());
+  if (!candidates.length) {
+    throw new Error(
+      failures[0] || 
+      "AniZone: Anime not found. " +
+      "To manually add it: 1) Find the anime on anizone.to, " +
+      "2) Copy the ID from the URL (e.g., 'uyyyn4kf' from /anime/uyyyn4kf), " +
+      "3) Add the mapping to backend/src/extensions/providers/anizone-mappings.json."
+    );
+  }
+
+  // Find best match
+  let best = null;
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    const score = scoreShowMatch(candidate, anime);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  if (!best?.id) {
+    throw new Error("No suitable AniZone match found.");
+  }
+
+  return {
+    id: best.id,
+    title: best.title,
+    url: best.url,
+  };
 }
 
 async function getAnimeEpisodes(animeId) {
