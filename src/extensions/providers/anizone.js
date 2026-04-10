@@ -320,6 +320,7 @@ function parseEpisodeId(episodeId) {
 
 module.exports = {
   name: "anizone",
+  disabled: true, // Disabled due to Cloudflare 403 protection
 
   async search(query) {
     const results = await searchAniZone(query);

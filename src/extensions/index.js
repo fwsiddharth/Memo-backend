@@ -10,7 +10,8 @@ function validateExtension(ext) {
     typeof ext.name === "string" &&
     typeof ext.search === "function" &&
     typeof ext.getEpisodes === "function" &&
-    typeof ext.getStream === "function"
+    typeof ext.getStream === "function" &&
+    !ext.disabled // Skip disabled extensions
   );
 }
 
