@@ -1,18 +1,5 @@
 const BASE_URL = "https://anizone.to";
 const CDN_BASE = "https://seiryuu.vid-cdn.xyz";
-const path = require("path");
-const fs = require("fs");
-
-// Load ID mappings
-let idMappings = {};
-try {
-  const mappingPath = path.join(__dirname, "anizone-mappings.json");
-  const mappingData = fs.readFileSync(mappingPath, "utf8");
-  const parsed = JSON.parse(mappingData);
-  idMappings = parsed.mappings || {};
-} catch (error) {
-  // Mappings file not found or invalid, continue without it
-}
 
 function normalizeText(value) {
   return String(value || "")
@@ -126,19 +113,24 @@ function extractAnimeFromHtml(html) {
 }
 
 async function searchAniZone(query) {
+  console.log('[AniZone] Searching for:', query);
+  
   // Try multiple approaches to find anime
   const results = [];
   const seenIds = new Set();
   
   // Approach 1: Try the anime index page
   try {
+    console.log('[AniZone] Fetching anime index page...');
     const html = await fetchHtml(`${BASE_URL}/anime`);
     const allAnime = extractAnimeFromHtml(html);
+    console.log('[AniZone] Found', allAnime.length, 'anime in index');
     
     const normalizedQuery = normalizeText(query);
     const filtered = allAnime.filter(anime => 
       normalizeText(anime.title).includes(normalizedQuery)
     );
+    console.log('[AniZone] Filtered to', filtered.length, 'matches');
     
     for (const anime of filtered) {
       if (!seenIds.has(anime.id)) {
@@ -147,18 +139,21 @@ async function searchAniZone(query) {
       }
     }
   } catch (error) {
-    // Continue to next approach
+    console.error('[AniZone] Error fetching anime index:', error.message);
   }
   
   // Approach 2: Try the episode index page (might have more recent anime)
   try {
+    console.log('[AniZone] Fetching episode index page...');
     const html = await fetchHtml(`${BASE_URL}/episode`);
     const allAnime = extractAnimeFromHtml(html);
+    console.log('[AniZone] Found', allAnime.length, 'anime in episode index');
     
     const normalizedQuery = normalizeText(query);
     const filtered = allAnime.filter(anime => 
       normalizeText(anime.title).includes(normalizedQuery)
     );
+    console.log('[AniZone] Filtered to', filtered.length, 'additional matches');
     
     for (const anime of filtered) {
       if (!seenIds.has(anime.id)) {
@@ -167,14 +162,18 @@ async function searchAniZone(query) {
       }
     }
   } catch (error) {
-    // Continue
+    console.error('[AniZone] Error fetching episode index:', error.message);
   }
   
+  console.log('[AniZone] Total search results:', results.length);
   return results;
 }
 
 async function resolveShow(anime) {
+  console.log('[AniZone] Resolving show for:', anime.title || anime.titleEnglish);
+  
   if (anime?.provider === "anizone") {
+    console.log('[AniZone] Anime is already from anizone, using ID:', anime.id);
     return {
       id: anime.id,
       title: anime.title,
@@ -182,21 +181,10 @@ async function resolveShow(anime) {
     };
   }
 
-  // Check if we have a manual mapping for this anime
-  const anilistId = String(anime?.id || "");
-  if (anilistId && idMappings[anilistId]) {
-    const anizoneId = idMappings[anilistId];
-    if (anizoneId !== "unknown") {
-      return {
-        id: anizoneId,
-        title: anime.title || anime.titleEnglish || anime.titleRomaji || "Unknown",
-        url: `${BASE_URL}/anime/${anizoneId}`,
-      };
-    }
-  }
-
   // Try automatic search and matching
   const names = buildQueryVariants(...getAnimeNames(anime));
+  console.log('[AniZone] Search variants:', names);
+  
   const byId = new Map();
   const failures = [];
 
@@ -214,13 +202,11 @@ async function resolveShow(anime) {
   }
 
   const candidates = Array.from(byId.values());
+  console.log('[AniZone] Found', candidates.length, 'candidates');
+  
   if (!candidates.length) {
     throw new Error(
-      failures[0] || 
-      "AniZone: Anime not found. " +
-      "To manually add it: 1) Find the anime on anizone.to, " +
-      "2) Copy the ID from the URL (e.g., 'uyyyn4kf' from /anime/uyyyn4kf), " +
-      "3) Add the mapping to backend/src/extensions/providers/anizone-mappings.json."
+      failures[0] || "AniZone: Anime not found on anizone.to"
     );
   }
 
@@ -229,6 +215,7 @@ async function resolveShow(anime) {
   let bestScore = -1;
   for (const candidate of candidates) {
     const score = scoreShowMatch(candidate, anime);
+    console.log('[AniZone] Candidate:', candidate.title, 'Score:', score);
     if (score > bestScore) {
       best = candidate;
       bestScore = score;
@@ -239,6 +226,7 @@ async function resolveShow(anime) {
     throw new Error("No suitable AniZone match found.");
   }
 
+  console.log('[AniZone] Best match:', best.title, 'ID:', best.id, 'Score:', bestScore);
   return {
     id: best.id,
     title: best.title,
@@ -247,12 +235,14 @@ async function resolveShow(anime) {
 }
 
 async function getAnimeEpisodes(animeId) {
+  console.log('[AniZone] Fetching episodes for anime ID:', animeId);
   const html = await fetchHtml(`${BASE_URL}/anime/${animeId}`);
   
   // Extract total episode count from the page
   const episodeCountMatch = html.match(/(\d+)\s+Episodes/i);
   if (episodeCountMatch) {
     const totalEpisodes = parseInt(episodeCountMatch[1]);
+    console.log('[AniZone] Found', totalEpisodes, 'episodes');
     // Generate episode list from 1 to total
     return Array.from({ length: totalEpisodes }, (_, i) => i + 1);
   }
@@ -270,6 +260,7 @@ async function getAnimeEpisodes(animeId) {
   }
   
   if (episodes.size > 0) {
+    console.log('[AniZone] Extracted', episodes.size, 'episodes from links');
     return Array.from(episodes).sort((a, b) => a - b);
   }
   
@@ -360,6 +351,7 @@ module.exports = {
       throw new Error("Invalid AniZone episode ID.");
     }
 
+    console.log('[AniZone] Getting stream for anime:', parsed.animeId, 'episode:', parsed.episodeNumber);
     const html = await fetchHtml(`${BASE_URL}/anime/${parsed.animeId}/${parsed.episodeNumber}`);
     const videoId = extractVideoId(html);
 
@@ -367,7 +359,9 @@ module.exports = {
       throw new Error("Failed to extract video ID from AniZone episode page.");
     }
 
+    console.log('[AniZone] Extracted video ID:', videoId);
     const streamUrl = `${CDN_BASE}/${videoId}/master.m3u8`;
+    console.log('[AniZone] Stream URL:', streamUrl);
 
     return {
       type: "hls",
