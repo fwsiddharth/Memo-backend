@@ -82,6 +82,10 @@ CREATE TABLE public.favorites (
   anime_id TEXT NOT NULL,
   provider TEXT NOT NULL DEFAULT 'anilist',
   
+  -- Anime metadata (for display without additional API calls)
+  anime_title TEXT,
+  anime_cover TEXT,
+  
   -- Timestamps
   added_at BIGINT NOT NULL,
   
@@ -91,6 +95,10 @@ CREATE TABLE public.favorites (
 -- Index for fast favorites list queries (most recent first)
 CREATE INDEX favorites_user_added_at_idx
   ON public.favorites (user_id, added_at DESC);
+
+-- Additional indexes for faster queries
+CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_anime_id ON favorites(anime_id);
 
 -- ============================================
 -- APP SETTINGS TABLE
