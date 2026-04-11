@@ -234,7 +234,7 @@ async function addFavorite(input, userId) {
     provider: input.provider || "anilist",
     anime_title: input.animeTitle || null,
     anime_cover: input.animeCover || null,
-    added_at: new Date().toISOString(),
+    added_at: Date.now(), // Use milliseconds timestamp for BIGINT column
   };
   
   console.log('[DB] Inserting payload:', payload);
