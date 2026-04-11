@@ -80,6 +80,22 @@ const settingsSchema = z.object({
   autoplayNext: z.boolean().optional(),
   preferredSubLang: z.string().optional(),
   uiAnimations: z.boolean().optional(),
+  captionSettings: z
+    .object({
+      fontFamily: z.string().nullable().optional(),
+      fontSize: z.number().optional(),
+      positionOffset: z.number().optional(),
+      bold: z.boolean().optional(),
+      italic: z.boolean().optional(),
+      align: z.enum(["left", "center", "right"]).optional(),
+      captionOpacity: z.number().optional(),
+      fontColor: z.string().optional(),
+      edgeStyle: z.enum(["none", "shadow", "outline", "raised"]).optional(),
+      edgeColor: z.string().optional(),
+      backgroundColor: z.string().optional(),
+      backgroundOpacity: z.number().optional(),
+    })
+    .optional(),
 });
 
 const trackerConnectSchema = z.object({
@@ -270,6 +286,11 @@ function detectContentType(url, upstreamType) {
   if (lower.endsWith(".ass") || lower.endsWith(".ssa")) return "text/plain; charset=utf-8";
   if (lower.endsWith(".m4s")) return "video/iso.segment";
   if (lower.endsWith(".ts")) return "video/mp2t";
+  if (lower.endsWith(".m3u8")) return "application/x-mpegurl";
+  if (lower.endsWith(".m3u")) return "application/x-mpegurl";
+  if (lower.endsWith(".mp4")) return "video/mp4";
+  if (lower.endsWith(".webm")) return "video/webm";
+  if (lower.endsWith(".mkv")) return "video/x-matroska";
   return upstreamType || "application/octet-stream";
 }
 
@@ -769,6 +790,187 @@ app.get("/api/stream", async (request, reply) => {
   }
 });
 
+// Alternative endpoint with .m3u8 extension for ExoPlayer compatibility
+// ExoPlayer on Android needs the URL path to end with .m3u8 to detect HLS
+app.get("/api/media.m3u8", async (request, reply) => {
+  const target = normalizeUrl(request.query?.url);
+  const referer = normalizeUrl(request.query?.referer);
+  const origin = normalizeUrl(request.query?.origin);
+  const subtitlesParam = request.query?.subtitles; // JSON string of subtitles
+
+  if (!target) {
+    return reply.code(400).send({ error: "Invalid media url." });
+  }
+
+  try {
+    validateUrlHost(target, "Media URL");
+  } catch {
+    return reply.code(403).send({ error: "Media host is not allowed." });
+  }
+
+  if (referer) {
+    try {
+      validateUrlHost(referer, "Referer URL");
+    } catch {
+      return reply.code(403).send({ error: "Referer host is not allowed." });
+    }
+  }
+
+  if (origin) {
+    try {
+      validateUrlHost(origin, "Origin URL");
+    } catch {
+      return reply.code(403).send({ error: "Origin host is not allowed." });
+    }
+  }
+  
+  // Parse subtitles if provided
+  let subtitles = [];
+  if (subtitlesParam) {
+    try {
+      subtitles = JSON.parse(decodeURIComponent(subtitlesParam));
+    } catch (error) {
+      app.log.warn({ message: "Failed to parse subtitles parameter", error: error?.message });
+    }
+  }
+
+  const headers = {
+    Accept: "*/*",
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  };
+  if (referer) headers.Referer = referer;
+  if (origin) headers.Origin = origin;
+  if (request.headers.range) headers.Range = request.headers.range;
+
+  // Abort if upstream takes too long — prevents indefinite hangs that
+  // cause hls.js to stall on the frontend.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  let upstream = null;
+  let finalUrl = target;
+  try {
+    const resolved = await fetchWithValidatedRedirects(target, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+    });
+    upstream = resolved.response;
+    finalUrl = resolved.finalUrl;
+  } catch (error) {
+    clearTimeout(timeout);
+    requestLogWarn("Media fetch failed", error);
+    const msg = error?.name === "AbortError" ? "Upstream request timed out." : (error?.message || "Media fetch failed.");
+    return reply.code(502).send({ error: msg });
+  }
+
+  clearTimeout(timeout);
+
+  if (upstream.status >= 400) {
+    const msg = await upstream.text();
+    return reply.code(502).send({
+      error: "Upstream media error",
+      status: upstream.status,
+      body: String(msg || "").slice(0, 160),
+    });
+  }
+
+  const contentType = upstream.headers.get("content-type") || "";
+  const backendBase = getRequestBaseUrl(request);
+
+  // CORS — required so hls.js on the frontend can read the response.
+  reply.header("Access-Control-Allow-Origin", "*");
+  reply.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  reply.header("Access-Control-Allow-Headers", "Range, Content-Type");
+  reply.header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+
+  if (isPlaylist(contentType, finalUrl)) {
+    const text = await upstream.text();
+    // Propagate the original referer/origin through to segment URLs so that
+    // CDNs like krussdomi.com receive the correct headers on every request.
+    const rewritten = rewritePlaylist(text, finalUrl, backendBase, referer, origin, subtitles);
+    reply
+      .code(upstream.status)
+      .header("Content-Type", "application/x-mpegURL; charset=utf-8")
+      .header("Cache-Control", "no-store")
+      .send(rewritten);
+    return;
+  }
+
+  const raw = Buffer.from(await upstream.arrayBuffer());
+  let responseContent = raw;
+  let responseType = detectContentType(finalUrl, contentType);
+  
+  // Convert subtitles to VTT format for browser compatibility
+  if (isSubtitleFile(finalUrl)) {
+    const lower = String(finalUrl || "").toLowerCase();
+    const isGojoSubtitle = finalUrl.includes("mega-cloud.top") || finalUrl.includes("ani.metsu.site");
+    
+    // Determine timing offset for Gojo subtitles (they tend to be delayed)
+    const timingOffset = isGojoSubtitle ? -0.5 : 0; // Advance Gojo subtitles by 0.5 seconds
+    
+    // Only convert ASS and SRT files, but process VTT for timing adjustment
+    if (lower.endsWith(".ass") || lower.endsWith(".ssa") || lower.endsWith(".srt")) {
+      try {
+        const textContent = raw.toString("utf-8");
+        let sourceFormat = "vtt";
+        
+        if (lower.endsWith(".srt")) sourceFormat = "srt";
+        else if (lower.endsWith(".ass")) sourceFormat = "ass";
+        else if (lower.endsWith(".ssa")) sourceFormat = "ssa";
+        
+        let converted = convertSubtitleToVtt(textContent, sourceFormat);
+        
+        // Apply timing offset if needed
+        if (timingOffset !== 0) {
+          converted = adjustVttTiming(converted, timingOffset);
+        }
+        
+        responseContent = Buffer.from(converted, "utf-8");
+        responseType = "text/vtt; charset=utf-8";
+        app.log.info({
+          message: "Converted subtitle to VTT",
+          sourceFormat,
+          timingOffset,
+          originalSize: raw.length,
+          convertedSize: responseContent.length,
+        });
+      } catch (error) {
+        app.log.warn({
+          message: "Subtitle conversion failed, serving original",
+          error: error?.message || String(error),
+        });
+        // Continue with original content if conversion fails
+      }
+    } else if (lower.endsWith(".vtt") && timingOffset !== 0) {
+      // VTT file that needs timing adjustment
+      try {
+        const textContent = raw.toString("utf-8");
+        const adjusted = adjustVttTiming(textContent, timingOffset);
+        responseContent = Buffer.from(adjusted, "utf-8");
+        responseType = "text/vtt; charset=utf-8";
+        app.log.info({
+          message: "Adjusted VTT timing",
+          timingOffset,
+        });
+      } catch (error) {
+        app.log.warn({
+          message: "VTT timing adjustment failed, serving original",
+          error: error?.message || String(error),
+        });
+      }
+    }
+  }
+
+  reply
+    .code(upstream.status)
+    .header("Content-Type", responseType)
+    .header("Content-Length", responseContent.length)
+    .header("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes")
+    .send(responseContent);
+});
+
 app.get("/api/media", async (request, reply) => {
   const target = normalizeUrl(request.query?.url);
   const referer = normalizeUrl(request.query?.referer);
@@ -951,6 +1153,14 @@ app.get("/api/media", async (request, reply) => {
   if (acceptRanges) reply.header("Accept-Ranges", acceptRanges);
   reply.header("Content-Length", String(responseContent.length));
   reply.send(responseContent);
+});
+
+app.options("/api/media.m3u8", async (_request, reply) => {
+  reply.header("Access-Control-Allow-Origin", "*");
+  reply.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  reply.header("Access-Control-Allow-Headers", "Range, Content-Type");
+  reply.header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+  reply.code(204).send();
 });
 
 app.options("/api/media", async (_request, reply) => {
