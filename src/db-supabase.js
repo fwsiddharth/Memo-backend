@@ -117,6 +117,7 @@ async function saveProgress(input, userId) {
     position,
     duration,
     completed,
+    anime_title: input.animeTitle || null,
     episode_number: Number.isFinite(input.episodeNumber) ? input.episodeNumber : null,
     episode_title: input.episodeTitle || null,
     updated_at: Date.now(),
