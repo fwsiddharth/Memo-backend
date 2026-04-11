@@ -1,14 +1,36 @@
--- Migration: Add anime_title and anime_cover columns to favorites table
--- Date: 2026-04-11
+-- Migration: Add anime_title and anime_cover to favorites table
+-- Date: 2026-04-12
+-- Description: Adds metadata columns to favorites table to avoid extra API calls
 
-ALTER TABLE favorites 
-ADD COLUMN IF NOT EXISTS anime_title TEXT,
-ADD COLUMN IF NOT EXISTS anime_cover TEXT;
+-- Add anime_title column if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'favorites' 
+    AND column_name = 'anime_title'
+  ) THEN
+    ALTER TABLE public.favorites ADD COLUMN anime_title TEXT;
+  END IF;
+END $$;
 
--- Note: added_at should remain as BIGINT (milliseconds timestamp)
--- If it was changed to timestamp, revert it:
--- ALTER TABLE favorites ALTER COLUMN added_at TYPE BIGINT USING EXTRACT(EPOCH FROM added_at::timestamp) * 1000;
+-- Add anime_cover column if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'favorites' 
+    AND column_name = 'anime_cover'
+  ) THEN
+    ALTER TABLE public.favorites ADD COLUMN anime_cover TEXT;
+  END IF;
+END $$;
 
--- Add indexes for faster queries
-CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
-CREATE INDEX IF NOT EXISTS idx_favorites_anime_id ON favorites(anime_id);
+-- Verify the migration
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_schema = 'public' 
+  AND table_name = 'favorites'
+ORDER BY ordinal_position;
