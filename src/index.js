@@ -1276,19 +1276,35 @@ app.get("/api/favorites/:animeId", async (request, reply) => {
 });
 
 app.post("/api/favorites", async (request, reply) => {
+  console.log('[Favorites API] POST request received');
+  console.log('[Favorites API] Request body:', request.body);
+  console.log('[Favorites API] Request headers:', request.headers);
+  
   let user = null;
   try {
     user = await getUserFromRequest(request);
-  } catch {
+    console.log('[Favorites API] User authenticated:', user.id);
+  } catch (error) {
+    console.error('[Favorites API] Auth failed:', error);
     return reply.code(401).send({ error: "Unauthorized" });
   }
+  
   const parsed = favoriteSchema.safeParse(request.body);
   if (!parsed.success) {
+    console.error('[Favorites API] Validation failed:', parsed.error);
     return reply.code(400).send({ error: "Invalid favorite payload." });
   }
-
-  await addFavorite(parsed.data, user.id);
-  return { ok: true };
+  
+  console.log('[Favorites API] Parsed data:', parsed.data);
+  
+  try {
+    await addFavorite(parsed.data, user.id);
+    console.log('[Favorites API] Successfully added favorite');
+    return { ok: true };
+  } catch (error) {
+    console.error('[Favorites API] Database error:', error);
+    return reply.code(500).send({ error: error.message || "Internal server error." });
+  }
 });
 
 app.delete("/api/favorites/:animeId", async (request, reply) => {

@@ -226,6 +226,8 @@ async function getResume(userId, animeId, episodeId, source = "default", provide
 }
 
 async function addFavorite(input, userId) {
+  console.log('[DB] addFavorite called with:', { input, userId });
+  
   const payload = {
     user_id: userId,
     anime_id: input.animeId,
@@ -234,11 +236,19 @@ async function addFavorite(input, userId) {
     anime_cover: input.animeCover || null,
     added_at: new Date().toISOString(),
   };
+  
+  console.log('[DB] Inserting payload:', payload);
 
   const { error } = await getSupabaseClient()
     .from("favorites")
     .upsert(payload, { onConflict: "user_id,anime_id,provider" });
 
+  if (error) {
+    console.error('[DB] Supabase error:', error);
+  } else {
+    console.log('[DB] Successfully saved favorite');
+  }
+  
   ensureNoError(error, "Failed to save favorite.");
 }
 
