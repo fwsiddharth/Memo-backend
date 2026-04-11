@@ -38,6 +38,7 @@ CREATE TABLE public.watch_history (
   
   -- Anime metadata (for display without additional API calls)
   anime_title TEXT,
+  anime_cover TEXT,
   
   -- Streaming source (server name: kaa-manifest, kaido, gojowtf, etc.)
   -- This tells which server successfully streamed this episode
