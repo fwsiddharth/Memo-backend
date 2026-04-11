@@ -117,8 +117,6 @@ async function saveProgress(input, userId) {
     position,
     duration,
     completed,
-    anime_title: input.animeTitle || null,
-    anime_cover: input.animeCover || null,
     episode_number: Number.isFinite(input.episodeNumber) ? input.episodeNumber : null,
     episode_title: input.episodeTitle || null,
     updated_at: Date.now(),
@@ -234,7 +232,7 @@ async function addFavorite(input, userId) {
     provider: input.provider || "anilist",
     anime_title: input.animeTitle || null,
     anime_cover: input.animeCover || null,
-    added_at: Date.now(),
+    added_at: new Date().toISOString(),
   };
 
   const { error } = await getSupabaseClient()
@@ -291,12 +289,21 @@ async function getSettings(userId) {
 
   ensureNoError(error, "Failed to load settings.");
   const map = new Map((data || []).map((row) => [row.key, row.value]));
+  let captionSettings = null;
+
+  try {
+    const rawCaptionSettings = map.get("caption_settings");
+    captionSettings = rawCaptionSettings ? JSON.parse(rawCaptionSettings) : null;
+  } catch {
+    captionSettings = null;
+  }
 
   return {
     sidebarCompact: boolToSetting(map.get("sidebar_compact"), true),
     autoplayNext: boolToSetting(map.get("autoplay_next"), true),
     preferredSubLang: map.get("preferred_sub_lang") || "en",
     uiAnimations: boolToSetting(map.get("ui_animations"), true),
+    captionSettings,
   };
 }
 
@@ -330,6 +337,13 @@ async function updateSettings(input, userId) {
       user_id: userId,
       key: "ui_animations",
       value: input.uiAnimations ? "1" : "0",
+    });
+  }
+  if (input.captionSettings && typeof input.captionSettings === "object") {
+    rows.push({
+      user_id: userId,
+      key: "caption_settings",
+      value: JSON.stringify(input.captionSettings),
     });
   }
 
