@@ -254,12 +254,21 @@ async function addFavorite(input, userId) {
 }
 
 async function removeFavorite(animeId, provider = "anilist", userId) {
-  const { error } = await getSupabaseClient()
+  console.log('[DB] removeFavorite called with:', { animeId, provider, userId });
+  
+  const { data, error } = await getSupabaseClient()
     .from("favorites")
     .delete()
     .eq("user_id", userId)
     .eq("anime_id", animeId)
-    .eq("provider", provider);
+    .eq("provider", provider)
+    .select(); // Return deleted rows for debugging
+
+  if (error) {
+    console.error('[DB] Supabase delete error:', error);
+  } else {
+    console.log('[DB] Successfully deleted favorite:', data);
+  }
 
   ensureNoError(error, "Failed to remove favorite.");
 }
