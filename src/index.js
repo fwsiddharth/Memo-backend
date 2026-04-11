@@ -1314,10 +1314,17 @@ app.delete("/api/favorites/:animeId", async (request, reply) => {
   } catch {
     return reply.code(401).send({ error: "Unauthorized" });
   }
-  const animeId = decodeURIComponent(String(request.params.animeId || ""));
-  const provider = String(request.query?.provider || "anilist");
-  await removeFavorite(animeId, provider, user.id);
-  return { ok: true };
+  
+  try {
+    const animeId = decodeURIComponent(String(request.params.animeId || ""));
+    const provider = String(request.query?.provider || "anilist");
+    console.log('[API] Removing favorite:', { animeId, provider, userId: user.id });
+    await removeFavorite(animeId, provider, user.id);
+    return { ok: true };
+  } catch (error) {
+    console.error('[API] Error removing favorite:', error);
+    return reply.code(500).send({ error: error.message || "Failed to remove favorite" });
+  }
 });
 
 app.get("/api/settings", async (request, reply) => {
