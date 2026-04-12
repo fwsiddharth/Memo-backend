@@ -222,7 +222,7 @@ async function getResume(userId, animeId, episodeId, source = "default", provide
     item = mapHistoryRow(data);
   }
 
-  if (!item || item.completed) return null;
+  if (!item) return null;
   if (item.duration > 0 && item.position >= item.duration * 0.95) return null;
   return item;
 }
