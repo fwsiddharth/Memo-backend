@@ -1266,8 +1266,13 @@ app.delete("/api/history/:animeId", async (request, reply) => {
     return reply.code(400).send({ error: "Missing animeId" });
   }
 
-  await deleteAnimeHistory(user.id, animeId, provider);
-  return { success: true };
+  try {
+    await deleteAnimeHistory(user.id, animeId, provider);
+    return { success: true };
+  } catch (error) {
+    console.error('[API] Delete history error:', error);
+    return reply.code(500).send({ error: error.message || "Failed to delete history" });
+  }
 });
 
 app.get("/api/favorites", async (request, reply) => {

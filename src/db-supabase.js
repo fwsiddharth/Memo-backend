@@ -228,12 +228,20 @@ async function getResume(userId, animeId, episodeId, source = "default", provide
 }
 
 async function deleteAnimeHistory(userId, animeId, provider = "anilist") {
+  console.log('[DB] deleteAnimeHistory called with:', { userId, animeId, provider });
+  
   const { error } = await getSupabaseClient()
     .from("watch_history")
     .delete()
     .eq("user_id", userId)
     .eq("anime_id", animeId)
     .eq("provider", provider);
+
+  if (error) {
+    console.error('[DB] Delete error:', error);
+  } else {
+    console.log('[DB] Successfully deleted history for anime:', animeId);
+  }
 
   ensureNoError(error, "Failed to delete anime history.");
 }
