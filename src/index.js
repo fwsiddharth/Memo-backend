@@ -14,6 +14,7 @@ const {
   getAnimeHistory,
   getRecentHistory,
   getResume,
+  deleteAnimeHistory,
   addFavorite,
   removeFavorite,
   isFavorite,
@@ -1248,6 +1249,25 @@ app.get("/api/history/resume", async (request, reply) => {
 
   const item = await getResume(user.id, animeId, episodeId, source, provider);
   return { item };
+});
+
+app.delete("/api/history/:animeId", async (request, reply) => {
+  let user = null;
+  try {
+    user = await getUserFromRequest(request);
+  } catch {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+
+  const { animeId } = request.params;
+  const provider = request.query?.provider || "anilist";
+
+  if (!animeId) {
+    return reply.code(400).send({ error: "Missing animeId" });
+  }
+
+  await deleteAnimeHistory(user.id, animeId, provider);
+  return { success: true };
 });
 
 app.get("/api/favorites", async (request, reply) => {

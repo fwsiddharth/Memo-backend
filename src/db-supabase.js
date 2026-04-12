@@ -227,6 +227,17 @@ async function getResume(userId, animeId, episodeId, source = "default", provide
   return item;
 }
 
+async function deleteAnimeHistory(userId, animeId, provider = "anilist") {
+  const { error } = await getSupabaseClient()
+    .from("watch_history")
+    .delete()
+    .eq("user_id", userId)
+    .eq("anime_id", animeId)
+    .eq("provider", provider);
+
+  ensureNoError(error, "Failed to delete anime history.");
+}
+
 async function addFavorite(input, userId) {
   console.log('[DB] addFavorite called with:', { input, userId });
   
@@ -429,6 +440,7 @@ module.exports = {
   getAnimeHistory,
   getRecentHistory,
   getResume,
+  deleteAnimeHistory,
   addFavorite,
   removeFavorite,
   isFavorite,
