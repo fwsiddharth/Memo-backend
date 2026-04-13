@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS public.watch_history CASCADE;
 DROP TABLE IF EXISTS public.favorites CASCADE;
 DROP TABLE IF EXISTS public.app_settings CASCADE;
 DROP TABLE IF EXISTS public.trackers CASCADE;
+DROP TABLE IF EXISTS public.notifications CASCADE;
 
 -- ============================================
 -- WATCH HISTORY TABLE
@@ -166,6 +167,31 @@ CREATE TABLE public.trackers (
 );
 
 -- ============================================
+-- NOTIFICATIONS TABLE
+-- ============================================
+-- Stores user notification preferences for anime
+-- ============================================
+
+CREATE TABLE public.notifications (
+  user_id TEXT NOT NULL,
+  anime_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'anilist',
+  anime_title TEXT,
+  anime_cover TEXT,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, anime_id, provider)
+);
+
+-- Create index for faster queries
+CREATE INDEX idx_notifications_user_enabled 
+ON public.notifications (user_id, enabled);
+
+CREATE INDEX idx_notifications_updated_at 
+ON public.notifications (updated_at);
+
+-- ============================================
 -- HELPER FUNCTIONS
 -- ============================================
 
@@ -271,6 +297,7 @@ ALTER TABLE public.watch_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trackers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Watch History Policies
 CREATE POLICY "Users can view their own watch history"
@@ -338,6 +365,23 @@ CREATE POLICY "Users can update their own trackers"
 
 CREATE POLICY "Users can delete their own trackers"
   ON public.trackers FOR DELETE
+  USING (auth.uid()::text = user_id);
+
+-- Notifications Policies
+CREATE POLICY "Users can view their own notifications"
+  ON public.notifications FOR SELECT
+  USING (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can insert their own notifications"
+  ON public.notifications FOR INSERT
+  WITH CHECK (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can update their own notifications"
+  ON public.notifications FOR UPDATE
+  USING (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can delete their own notifications"
+  ON public.notifications FOR DELETE
   USING (auth.uid()::text = user_id);
 
 -- ============================================

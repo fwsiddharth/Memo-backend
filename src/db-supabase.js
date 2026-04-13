@@ -441,6 +441,76 @@ async function disconnectTracker(provider, userId) {
   ensureNoError(error, "Failed to disconnect tracker.");
 }
 
+// Notification functions
+function mapNotificationRow(row) {
+  if (!row) return null;
+  return {
+    animeId: row.anime_id,
+    provider: row.provider,
+    animeTitle: row.anime_title || null,
+    animeCover: row.anime_cover || null,
+    enabled: Boolean(row.enabled),
+    createdAt: Number(row.created_at || 0),
+    updatedAt: Number(row.updated_at || 0),
+  };
+}
+
+async function isNotificationEnabled(userId, animeId, provider = "anilist") {
+  const { data, error } = await getSupabaseClient()
+    .from("notifications")
+    .select("enabled")
+    .eq("user_id", userId)
+    .eq("anime_id", animeId)
+    .eq("provider", provider)
+    .limit(1)
+    .maybeSingle();
+
+  ensureNoError(error, "Failed to check notification status.");
+  return Boolean(data?.enabled);
+}
+
+async function enableNotification(userId, animeId, provider = "anilist", animeTitle = null, animeCover = null) {
+  const payload = {
+    user_id: userId,
+    anime_id: animeId,
+    provider: provider,
+    anime_title: animeTitle,
+    anime_cover: animeCover,
+    enabled: true,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  };
+
+  const { error } = await getSupabaseClient()
+    .from("notifications")
+    .upsert(payload, { onConflict: "user_id,anime_id,provider" });
+
+  ensureNoError(error, "Failed to enable notification.");
+}
+
+async function disableNotification(userId, animeId, provider = "anilist") {
+  const { error } = await getSupabaseClient()
+    .from("notifications")
+    .update({ enabled: false, updated_at: Date.now() })
+    .eq("user_id", userId)
+    .eq("anime_id", animeId)
+    .eq("provider", provider);
+
+  ensureNoError(error, "Failed to disable notification.");
+}
+
+async function listNotifications(userId) {
+  const { data, error } = await getSupabaseClient()
+    .from("notifications")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("enabled", true)
+    .order("updated_at", { ascending: false });
+
+  ensureNoError(error, "Failed to load notifications.");
+  return (data || []).map(mapNotificationRow);
+}
+
 module.exports = {
   initDb,
   saveProgress,
@@ -458,4 +528,8 @@ module.exports = {
   listTrackers,
   connectTracker,
   disconnectTracker,
+  isNotificationEnabled,
+  enableNotification,
+  disableNotification,
+  listNotifications,
 };

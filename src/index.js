@@ -24,6 +24,10 @@ const {
   listTrackers,
   connectTracker,
   disconnectTracker,
+  isNotificationEnabled,
+  enableNotification,
+  disableNotification,
+  listNotifications,
 } = require("./db-supabase");
 const { loadExtensions, getExtension, listExtensions } = require("./extensions");
 const { getHomeFeeds, getSpotlightFeeds, searchAnime, getAnimeById } = require("./providers/anilist");
@@ -1420,6 +1424,97 @@ app.delete("/api/trackers/:provider", async (request, reply) => {
   }
   await disconnectTracker(provider, user.id);
   return { ok: true, items: await listTrackers(user.id) };
+});
+
+// Notification endpoints
+app.get("/api/notifications/:animeId", async (request, reply) => {
+  let user = null;
+  try {
+    user = await getUserFromRequest(request);
+  } catch {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  
+  const animeId = decodeURIComponent(String(request.params.animeId || ""));
+  const provider = String(request.query?.provider || "anilist");
+  
+  if (!animeId) {
+    return reply.code(400).send({ error: "animeId is required" });
+  }
+  
+  try {
+    const enabled = await isNotificationEnabled(user.id, animeId, provider);
+    return { enabled };
+  } catch (error) {
+    console.error('[Notifications API] Error checking status:', error);
+    return reply.code(500).send({ error: error.message || "Failed to check notification status" });
+  }
+});
+
+app.post("/api/notifications/:animeId", async (request, reply) => {
+  let user = null;
+  try {
+    user = await getUserFromRequest(request);
+  } catch {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  
+  const animeId = decodeURIComponent(String(request.params.animeId || ""));
+  const provider = String(request.query?.provider || "anilist");
+  const { animeTitle, animeCover } = request.body || {};
+  
+  if (!animeId) {
+    return reply.code(400).send({ error: "animeId is required" });
+  }
+  
+  try {
+    await enableNotification(user.id, animeId, provider, animeTitle, animeCover);
+    return { ok: true };
+  } catch (error) {
+    console.error('[Notifications API] Error enabling notification:', error);
+    return reply.code(500).send({ error: error.message || "Failed to enable notification" });
+  }
+});
+
+app.delete("/api/notifications/:animeId", async (request, reply) => {
+  let user = null;
+  try {
+    user = await getUserFromRequest(request);
+  } catch {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  
+  const animeId = decodeURIComponent(String(request.params.animeId || ""));
+  const provider = String(request.query?.provider || "anilist");
+  
+  if (!animeId) {
+    return reply.code(400).send({ error: "animeId is required" });
+  }
+  
+  try {
+    await disableNotification(user.id, animeId, provider);
+    return { ok: true };
+  } catch (error) {
+    console.error('[Notifications API] Error disabling notification:', error);
+    return reply.code(500).send({ error: error.message || "Failed to disable notification" });
+  }
+});
+
+app.get("/api/notifications", async (request, reply) => {
+  let user = null;
+  try {
+    user = await getUserFromRequest(request);
+  } catch {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  
+  try {
+    const notifications = await listNotifications(user.id);
+    return { items: notifications };
+  } catch (error) {
+    console.error('[Notifications API] Error listing notifications:', error);
+    return reply.code(500).send({ error: error.message || "Failed to list notifications" });
+  }
 });
 
 app.setErrorHandler((error, _request, reply) => {
