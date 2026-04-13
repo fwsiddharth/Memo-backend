@@ -13,6 +13,26 @@ CREATE TABLE IF NOT EXISTS notifications (
     PRIMARY KEY (user_id, anime_id, provider)
 );
 
+-- Enable Row Level Security
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY "Users can view their own notifications"
+  ON notifications FOR SELECT
+  USING (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can insert their own notifications"
+  ON notifications FOR INSERT
+  WITH CHECK (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can update their own notifications"
+  ON notifications FOR UPDATE
+  USING (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can delete their own notifications"
+  ON notifications FOR DELETE
+  USING (auth.uid()::text = user_id);
+
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_notifications_user_enabled 
 ON notifications (user_id, enabled);

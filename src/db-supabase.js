@@ -511,6 +511,76 @@ async function listNotifications(userId) {
   return (data || []).map(mapNotificationRow);
 }
 
+// Authentication functions for username support
+async function isUsernameAvailable(username) {
+  const client = getSupabaseClient();
+  
+  const { data, error } = await client
+    .rpc('is_username_available', { check_username: username });
+  
+  if (error) {
+    console.error('Error checking username availability:', error);
+    throw new Error('Failed to check username availability');
+  }
+  
+  return data;
+}
+
+async function signUpWithProfile(email, password, username, displayName) {
+  const client = getSupabaseClient();
+  
+  // First check if username is available
+  const available = await isUsernameAvailable(username);
+  if (!available) {
+    throw new Error('Username is already taken');
+  }
+  
+  // Create the user with metadata
+  const { data, error } = await client.auth.admin.createUser({
+    email,
+    password,
+    user_metadata: {
+      username,
+      display_name: displayName
+    },
+    email_confirm: false // Skip email confirmation for now
+  });
+  
+  if (error) {
+    console.error('Error creating user:', error);
+    throw new Error(error.message || 'Failed to create account');
+  }
+  
+  return data;
+}
+
+async function signInWithUsernameOrEmail(identifier, password) {
+  const client = getSupabaseClient();
+  
+  // First, find the user by username or email
+  const { data: userData, error: userError } = await client
+    .rpc('find_user_by_username_or_email', { identifier });
+  
+  if (userError || !userData || userData.length === 0) {
+    throw new Error('Invalid username/email or password');
+  }
+  
+  const user = userData[0];
+  
+  // Sign in with the email (Supabase requires email for sign in)
+  const { data, error } = await client.auth.signInWithPassword({
+    email: user.email,
+    password
+  });
+  
+  if (error) {
+    console.error('Error signing in:', error);
+    throw new Error('Invalid username/email or password');
+  }
+  
+  return data;
+}
+
 module.exports = {
   initDb,
   saveProgress,
@@ -532,4 +602,7 @@ module.exports = {
   enableNotification,
   disableNotification,
   listNotifications,
+  isUsernameAvailable,
+  signUpWithProfile,
+  signInWithUsernameOrEmail,
 };

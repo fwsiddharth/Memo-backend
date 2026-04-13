@@ -1517,6 +1517,66 @@ app.get("/api/notifications", async (request, reply) => {
   }
 });
 
+// Authentication endpoints for username support
+app.post("/api/auth/check-username", async (request, reply) => {
+  const { username } = request.body || {};
+  
+  if (!username || typeof username !== 'string' || username.trim().length < 3) {
+    return reply.code(400).send({ error: "Username must be at least 3 characters long" });
+  }
+  
+  try {
+    const { isUsernameAvailable } = require("./db-supabase");
+    const available = await isUsernameAvailable(username.trim());
+    return { available };
+  } catch (error) {
+    console.error('[Auth API] Error checking username:', error);
+    return reply.code(500).send({ error: "Failed to check username availability" });
+  }
+});
+
+app.post("/api/auth/signup", async (request, reply) => {
+  const { email, password, username, displayName } = request.body || {};
+  
+  if (!email || !password || !username || !displayName) {
+    return reply.code(400).send({ error: "Email, password, username, and display name are required" });
+  }
+  
+  if (password.length < 6) {
+    return reply.code(400).send({ error: "Password must be at least 6 characters long" });
+  }
+  
+  if (username.length < 3) {
+    return reply.code(400).send({ error: "Username must be at least 3 characters long" });
+  }
+  
+  try {
+    const { signUpWithProfile } = require("./db-supabase");
+    const result = await signUpWithProfile(email, password, username, displayName);
+    return { success: true, message: "Account created successfully" };
+  } catch (error) {
+    console.error('[Auth API] Error during signup:', error);
+    return reply.code(400).send({ error: error.message || "Failed to create account" });
+  }
+});
+
+app.post("/api/auth/signin", async (request, reply) => {
+  const { identifier, password } = request.body || {};
+  
+  if (!identifier || !password) {
+    return reply.code(400).send({ error: "Username/email and password are required" });
+  }
+  
+  try {
+    const { signInWithUsernameOrEmail } = require("./db-supabase");
+    const result = await signInWithUsernameOrEmail(identifier, password);
+    return { success: true, user: result.user };
+  } catch (error) {
+    console.error('[Auth API] Error during signin:', error);
+    return reply.code(401).send({ error: error.message || "Invalid credentials" });
+  }
+});
+
 app.setErrorHandler((error, _request, reply) => {
   requestLogWarn("Unhandled server error", error);
   reply.code(500).send({ error: "Internal server error." });
