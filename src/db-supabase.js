@@ -535,7 +535,7 @@ async function signUpWithProfile(email, password, username, displayName) {
     throw new Error('Username is already taken');
   }
   
-  // Create the user with metadata
+  // Create the user with metadata and auto-confirm email
   const { data, error } = await client.auth.admin.createUser({
     email,
     password,
@@ -543,7 +543,7 @@ async function signUpWithProfile(email, password, username, displayName) {
       username,
       display_name: displayName
     },
-    email_confirm: false // Skip email confirmation for now
+    email_confirm: true // Auto-confirm email
   });
   
   if (error) {
@@ -578,7 +578,14 @@ async function signInWithUsernameOrEmail(identifier, password) {
     throw new Error('Invalid username/email or password');
   }
   
-  return data;
+  // Return both the auth data and the user profile info
+  return {
+    ...data,
+    profile: {
+      username: user.username,
+      displayName: user.display_name
+    }
+  };
 }
 
 module.exports = {
