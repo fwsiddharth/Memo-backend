@@ -1577,6 +1577,24 @@ app.post("/api/auth/signin", async (request, reply) => {
   }
 });
 
+// Admin endpoint to confirm user email (for fixing existing unconfirmed users)
+app.post("/api/auth/confirm-email", async (request, reply) => {
+  const { email } = request.body || {};
+  
+  if (!email) {
+    return reply.code(400).send({ error: "Email is required" });
+  }
+  
+  try {
+    const { confirmUserEmail } = require("./db-supabase");
+    await confirmUserEmail(email);
+    return { success: true, message: "Email confirmed successfully" };
+  } catch (error) {
+    console.error('[Auth API] Error confirming email:', error);
+    return reply.code(500).send({ error: error.message || "Failed to confirm email" });
+  }
+});
+
 app.setErrorHandler((error, _request, reply) => {
   requestLogWarn("Unhandled server error", error);
   reply.code(500).send({ error: "Internal server error." });

@@ -588,6 +588,37 @@ async function signInWithUsernameOrEmail(identifier, password) {
   };
 }
 
+async function confirmUserEmail(email) {
+  const client = getSupabaseClient();
+  
+  // Get the user by email
+  const { data: users, error: getUserError } = await client.auth.admin.listUsers();
+  
+  if (getUserError) {
+    console.error('Error listing users:', getUserError);
+    throw new Error('Failed to find user');
+  }
+  
+  const user = users.users.find(u => u.email === email);
+  
+  if (!user) {
+    throw new Error('User not found');
+  }
+  
+  // Update the user to confirm their email
+  const { data, error } = await client.auth.admin.updateUserById(
+    user.id,
+    { email_confirm: true }
+  );
+  
+  if (error) {
+    console.error('Error confirming email:', error);
+    throw new Error('Failed to confirm email');
+  }
+  
+  return data;
+}
+
 module.exports = {
   initDb,
   saveProgress,
@@ -612,4 +643,5 @@ module.exports = {
   isUsernameAvailable,
   signUpWithProfile,
   signInWithUsernameOrEmail,
+  confirmUserEmail,
 };
