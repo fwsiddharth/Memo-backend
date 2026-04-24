@@ -53,7 +53,7 @@ async function getHomeFeedsFallback() {
 
 async function searchAnimeFallback(search) {
   const raw = await kitsuRequest(
-    `/anime?page[limit]=24&filter[text]=${encodeURIComponent(search)}`,
+    `/anime?page[limit]=20&filter[text]=${encodeURIComponent(search)}`,
   );
   return (raw.data || []).map(mapKitsuAnime);
 }
